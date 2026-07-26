@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Instrukcja - Warframe Demand Tracker</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1, h2 { margin-bottom: 8px; }
+    p { margin: 12px 0; }
+    ul { margin-left: 18px; }
+    .panel { border: 1px solid #ccc; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+    a { color: #0074d9; }
+  </style>
+</head>
+<body>
+  <h1>Instrukcja obsługi</h1>
+  <p><a href="/">Powrót do strony głównej</a></p>
+
+  <div class="panel">
+    <h2>Jak działa strona</h2>
+    <ul>
+      <li>Wybierz itemy z listy lub użyj filtra, aby odszukać nazwę / slug.</li>
+      <li>Możesz dodać pełną <strong>WATCHLIST</strong> jednym kliknięciem.</li>
+      <li>Presety zaznaczają wcześniej dobrane grupy itemów.</li>
+      <li>Opcja <strong>Preset</strong> w sekcji ustawień wybiera metrykę sortowania wyników.</li>
+    </ul>
+  </div>
+
+  <div class="panel">
+    <h2>Ustawienia</h2>
+    <ul>
+      <li><strong>Maksymalna liczba wyników</strong> - ogranicza liczbę wierszy w wygenerowanym Excelu.</li>
+      <li><strong>Szacowany limit żądań</strong> - pomaga obliczyć ETA na podstawie limitu łącza.</li>
+      <li><strong>Używaj statystyk wolumenu</strong> - włącza dodatkowe statystyki z warframe.market.</li>
+      <li><strong>Tylko tradowalne</strong> - pomija przedmioty, które nie są tradowalne.</li>
+      <li><strong>Top Market Demand Index</strong> - sortuje wyniki po nowym wskaźniku popytu rynkowego.</li>
+      <li><strong>Top Grind Yield (plat/min)</strong> - sortuje wyniki po estymowanym zysku z grindowania.</li>
+      <li><strong>Top Buy Orders</strong> - sortuje wyniki po liczbie aktywnych zleceń kupna.</li>
+      <li><strong>Top Sell Orders</strong> - sortuje wyniki po liczbie aktywnych zleceń sprzedaży.</li>
+    </ul>
+  </div>
+
+  <div class="panel">
+    <h2>Generowanie pliku</h2>
+    <ul>
+      <li>Kliknij <strong>Uruchom analizę</strong>, aby rozpocząć skan.</li>
+      <li>Proces jest uruchamiany w tle, a pasek postępu aktualizuje się automatycznie.</li>
+      <li>Po zakończeniu kliknij link pobierania, aby pobrać plik Excel.</li>
+      <li>Jeśli chcesz ponownie użyć danych ostatniego pełnego skanu, kliknij <strong>Zbuduj Excel z cache</strong>.</li>
+    </ul>
+  </div>
+
+  <div class="panel">
+    <h2>Plik Excel</h2>
+    <ul>
+      <li>Arkusz nosi teraz nazwę raportu z wybraną metryką.</li>
+      <li>Wartości w skoroszycie są pobierane z warframe.market, WFCD oraz opcjonalnie z overframe.</li>
+      <li>Market Demand Index oblicza się w Excelu przy pomocy formuł.</li>
+    </ul>
+  </div>
+</body>
+</html>

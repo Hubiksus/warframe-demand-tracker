@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Warframe Tracker UI</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1 { margin-bottom: 8px; }
+    .panel { border: 1px solid #ccc; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+    label { display: block; margin: 8px 0 4px; font-weight: bold; }
+    select, input, button { width: 100%; padding: 8px; margin-bottom: 10px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .row > div { flex: 1 1 220px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #f4f4f4; }
+    .status { margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Warframe Demand Tracker</h1>
+  <div style="margin-bottom: 12px;">
+    <a href="/instructions">Instrukcja obsługi</a>
+  </div>
+
+  <div class="panel">
+    <h2>Wybierz co śledzić</h2>
+    <label for="item-filter">Filtruj itemy</label>
+    <input id="item-filter" type="text" placeholder="Wyszukaj po nazwie lub slug" />
+    <label for="item-select">Przedmioty z rynku</label>
+    <select id="item-select" multiple size="18"></select>
+    <div class="row">
+      <div><button id="add-watchlist">Dodaj WATCHLIST do wyboru</button></div>
+      <div style="align-self: center; font-size: 0.95rem; color: #333;">Wybrane: <span id="selected-count">0</span></div>
+    </div>
+    <div id="presets" style="margin-top: 16px;"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Ustawienia</h2>
+    <div class="row">
+      <div>
+        <label for="preset">Sortuj wg</label>
+        <select id="preset">
+          <option value="market_demand_index">Top Market Demand Index</option>
+          <option value="estimated_grind_yield">Top Grind Yield (plat/min)</option>
+          <option value="buy_orders_count">Top Buy Orders</option>
+          <option value="sell_orders_count">Top Sell Orders</option>
+        </select>
+      </div>
+      <div>
+        <label for="max-output">Maksymalna liczba wyników</label>
+        <input id="max-output" type="number" min="1" value="200" />
+      </div>
+      <div>
+        <label for="rate-limit">Szacowany limit żądań (req/s)</label>
+        <input id="rate-limit" type="number" min="1" value="3" />
+      </div>
+      <div>
+        <label for="use-statistics">Używaj statystyk wolumenu</label>
+        <input id="use-statistics" type="checkbox" checked />
+      </div>
+      <div>
+        <label for="tradable-only">Tylko tradowalne</label>
+        <input id="tradable-only" type="checkbox" checked />
+      </div>
+    </div>
+    <button id="estimate">Oblicz ETA</button>
+    <button id="run">Uruchom analizę</button>
+    <button id="build-cache" type="button">Zbuduj Excel z cache</button>
+    <div class="status" id="status"></div>
+    <div class="status" id="cache-info"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Podgląd wyników</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th>Item</th>
+          <th>Price</th>
+          <th>Avg Top5</th>
+          <th>Buy</th>
+          <th>Vol 48h</th>
+          <th>Estimated Grind Yield (plat/min)</th>
+        </tr>
+      </thead>
+      <tbody id="results"></tbody>
+    </table>
+    <div id="download"></div>
+  </div>
+
+<script>
+let watchlist = {{ watchlist | tojson | safe }};
+let presets = [];
+let cacheInfo = { exists: false, created: null, count: 0 };
+let allItems = [];
+const itemSelect = document.getElementById('item-select');
+const addWatchlistButton = document.getElementById('add-watchlist');
+const itemFilterEl = document.getElementById('item-filter');
+const selectedCountEl = document.getElementById('selected-count');
+const statusEl = document.getElementById('status');
+const cacheInfoEl = document.getElementById('cache-info');
+const resultsEl = document.getElementById('results');
+const downloadEl = document.getElementById('download');
+const presetEl = document.getElementById('preset');
+const rateLimitEl = document.getElementById('rate-limit');
+const maxOutputEl = document.getElementById('max-output');
+const useStatsEl = document.getElementById('use-statistics');
+const tradableOnlyEl = document.getElementById('tradable-only');
+let progressInterval;
+
+async function loadItems() {
+  const resp = await fetch('/api/items');
+  const data = await resp.json();
+  const items = data.items || [];
+  allItems = items;
+  watchlist = data.watchlist || watchlist;
+  presets = data.presets || presets;
+  cacheInfo = data.cache || cacheInfo;
+  populateItemList(items);
+  renderCacheInfo();
+}
+
+function getSelectedSlugs() {
+  return new Set(Array.from(itemSelect.selectedOptions).map(option => option.value));
+}
+
+function populateItemList(items, preserveSelection = true) {
+  const selectedSlugs = preserveSelection ? getSelectedSlugs() : new Set();
+  itemSelect.innerHTML = '';
+  items.forEach(item => {
+    const opt = document.createElement('option');
+    opt.value = item.slug;
+    opt.text = item.item_name + ' (' + item.slug + ')';
+    if (selectedSlugs.has(item.slug)) {
+      opt.selected = true;
+    }
+    itemSelect.appendChild(opt);
+  });
+  updateSelectedCount();
+}
+
+function updateSelectedCount() {
+  selectedCountEl.textContent = itemSelect.selectedOptions.length;
+}
+
+addWatchlistButton.addEventListener('click', () => {
+  itemFilterEl.value = '';
+  populateItemList(allItems, false);
+  Array.from(itemSelect.options).forEach(option => {
+    if (watchlist.includes(option.value)) {
+      option.selected = true;
+    }
+  });
+  updateSelectedCount();
+});
+
+itemFilterEl.addEventListener('input', () => {
+  const filter = itemFilterEl.value.trim().toLowerCase();
+  if (!filter) {
+    populateItemList(allItems);
+    return;
+  }
+  const filtered = allItems.filter(item =>
+    item.item_name.toLowerCase().includes(filter) || item.slug.toLowerCase().includes(filter)
+  );
+  populateItemList(filtered);
+});
+
+function renderPresetButton(preset) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = preset.label;
+  button.style.marginRight = '8px';
+  button.style.marginBottom = '8px';
+  if (preset.cache_based && !cacheInfo.exists) {
+    button.disabled = true;
+    button.title = 'Wymagany wcześniejszy pełny skan cache.';
+  }
+  button.addEventListener('click', () => {
+    const selectedSlugs = preset.slugs.slice(0, Number(maxOutputEl.value) || preset.slugs.length);
+    Array.from(itemSelect.options).forEach(option => {
+      option.selected = selectedSlugs.includes(option.value);
+    });
+    updateSelectedCount();
+    statusEl.textContent = `Wybrano preset: ${preset.label}. Wybrano ${Math.min(selectedSlugs.length, itemSelect.options.length)} itemów.`;
+  });
+  return button;
+}
+
+function renderPresets() {
+  const presetsContainer = document.getElementById('presets');
+  presetsContainer.innerHTML = '<h3>Presety szybkiego wyboru</h3>';
+  presets.forEach(preset => {
+    const button = renderPresetButton(preset);
+    const description = document.createElement('div');
+    description.textContent = preset.description;
+    description.style.fontSize = '0.9rem';
+    description.style.marginBottom = '6px';
+    description.style.color = '#555';
+
+    const wrapper = document.createElement('div');
+    wrapper.style.marginBottom = '10px';
+    wrapper.appendChild(button);
+    wrapper.appendChild(description);
+    presetsContainer.appendChild(wrapper);
+  });
+}
+
+function renderCacheInfo() {
+  if (!cacheInfo.exists) {
+    cacheInfoEl.textContent = 'Brak cache. Przeskanuj rynek raz, aby korzystać z danych historycznych.';
+    return;
+  }
+  cacheInfoEl.textContent = `Cache z ostatniego skanu: ${cacheInfo.count} pozycji, wygenerowany ${cacheInfo.created}`;
+}
+
+async function estimate() {
+  const slugs = Array.from(itemSelect.selectedOptions).map(o => o.value);
+  if (!slugs.length) {
+    statusEl.textContent = 'Wybierz przynajmniej jeden item.';
+    return;
+  }
+  const resp = await fetch('/api/estimate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      slugs,
+      use_statistics: useStatsEl.checked,
+      rate_limit: Number(rateLimitEl.value),
+    }),
+  });
+  const data = await resp.json();
+  statusEl.textContent = `ETA: ${data.minutes} min (${data.seconds.toFixed(0)} s), ${data.requests_per_item} req/item, ${data.total_requests} req total.`;
+}
+
+async function runAnalysis() {
+  const slugs = Array.from(itemSelect.selectedOptions).map(o => o.value);
+  if (!slugs.length) {
+    statusEl.textContent = 'Wybierz przynajmniej jeden item.';
+    return;
+  }
+  statusEl.textContent = 'Uruchamiam analizę...';
+  downloadEl.innerHTML = '';
+  const payload = {
+    slugs,
+    top_n_by: presetEl.value,
+    max_output: Number(maxOutputEl.value),
+    tradable_only: tradableOnlyEl.checked,
+    use_statistics: useStatsEl.checked,
+  };
+  const resp = await fetch('/api/run', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  const data = await resp.json();
+  if (resp.ok) {
+    statusEl.textContent = 'Skanowanie uruchomione. Sprawdzaj pasek postępu niżej.';
+    resultsEl.innerHTML = '';
+  } else {
+    statusEl.textContent = data.error || 'Błąd podczas analizy.';
+  }
+}
+
+function renderPreview(rows) {
+  resultsEl.innerHTML = '';
+  if (!rows || !rows.length) {
+    return;
+  }
+  rows.forEach(row => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${row.rank}</td>
+      <td>${row.item_name}</td>
+      <td>${row.lowest_sell_price ?? ''}</td>
+      <td>${row.avg_sell_price_top5 ?? ''}</td>
+      <td>${row.buy_orders_count}</td>
+      <td>${row.volume_48h}</td>
+      <td>${row.estimated_grind_yield ?? '-'}</td>
+    `;
+    resultsEl.appendChild(tr);
+  });
+}
+
+document.getElementById('estimate').addEventListener('click', estimate);
+document.getElementById('run').addEventListener('click', runAnalysis);
+document.getElementById('build-cache').addEventListener('click', async () => {
+  statusEl.textContent = 'Buduję Excel z cache...';
+  const resp = await fetch('/api/build-cache', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      top_n_by: presetEl.value,
+      max_output: Number(maxOutputEl.value),
+      tradable_only: tradableOnlyEl.checked,
+    }),
+  });
+  const data = await resp.json();
+  if (resp.ok) {
+    statusEl.textContent = `Gotowe: ${data.count} pozycji. Plik gotowy do pobrania.`;
+    downloadEl.innerHTML = `<a href='${data.download_url}'>Pobierz wygenerowany plik</a>`;
+  } else {
+    statusEl.textContent = data.error || 'Błąd przy odbudowie z cache.';
+  }
+});
+loadItems().then(() => {
+  renderPresets();
+  itemSelect.addEventListener('change', updateSelectedCount);
+  pollProgress();
+});
+
+function formatTime(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return 'n/d';
+  }
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60);
+  return `${mins}m ${secs}s`;
+}
+
+async function pollProgress() {
+  clearInterval(progressInterval);
+  progressInterval = setInterval(async () => {
+    const resp = await fetch('/api/progress');
+    if (!resp.ok) {
+      return;
+    }
+    const data = await resp.json();
+    if (data.status === 'running') {
+      statusEl.textContent = `${data.message} ${data.percent}% (ETA: ${formatTime(data.eta_seconds)})`;
+    } else if (data.status === 'finished') {
+      statusEl.textContent = `${data.message} Pobierz: ${data.download_url}`;
+      if (data.download_url) {
+        downloadEl.innerHTML = `<a href='${data.download_url}'>Pobierz wygenerowany plik</a>`;
+      }
+      if (data.preview && data.preview.length) {
+        renderPreview(data.preview);
+      } else {
+        resultsEl.innerHTML = '';
+      }
+      clearInterval(progressInterval);
+    } else if (data.status === 'error') {
+      statusEl.textContent = `Błąd: ${data.message}`;
+      resultsEl.innerHTML = '';
+      clearInterval(progressInterval);
+    }
+  }, 2000);
+}
+</script>
+</body>
+</html>
