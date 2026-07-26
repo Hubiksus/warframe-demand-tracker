@@ -3,7 +3,7 @@
 Automatyczny, cyklicznie aktualizowany arkusz Excel z popytem, cenami, ilością ofert
 i notatką "jak zdobyć" dla wybranych itemów z Warframe.
 
-## Co realnie działa i skąd biorą się dane
+## Co działa i skąd biorą się dane
 
 | Kolumna w Excelu | Źródło | Status |
 |---|---|---|
